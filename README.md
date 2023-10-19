@@ -16,7 +16,7 @@ Die Aufgabe bestand darin, aus einer aufeinanderfolgenden Reihe von Bildern ein 
 
 ## Bemerkung
 
-Das trainierte YOLOv8-Modell erweist sich als unzureichend, robust und präzise, um es weiterhin einzusetzen. 
+Das trainierte YOLOv8-Modell erweist sich als unzureichend robust und präzise, um es weiterhin einzusetzen. 
 Bis zur Messfahrt am 7. Juli 2023 (Aufzeichnungsnr. 37, siehe Aufnahmen_Übersicht.xlsx) hat es funktioniert. Jedoch treten bei dieser und anderen Messfahrten im Sommer wiederholt Probleme auf: Es erfolgt entweder die falsche Identifikation von Bäumen oder es werden in aufeinanderfolgenden Bildern keine Bäume erkannt, obwohl sie deutlich sichtbar sind.
 Im Winter ist dies aber durchaus einsetzbar.
 
