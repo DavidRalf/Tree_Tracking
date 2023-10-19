@@ -34,7 +34,7 @@ Zur Verwendung des Skriptes müssen einige Pakete installiert sein im Zusammenha
 - pip install os
 - pip install cv2
 
-Für das Verwenden des navsat Skriptes sollte noch ROS installiert sein.
+Für das Verwenden des navsat Skriptes sollte noch ROS installiert werden.
 
 
 ## Verwendung
