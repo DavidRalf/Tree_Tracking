@@ -39,6 +39,8 @@ Für das Verwenden des navsat Skriptes sollte noch ROS installiert sein.
 
 ## Verwendung
 Falls noch nicht gemacht, sollte aus den Messfahrten Videos extrahiert werden. Mithilfe des Skriptes von David Berschauer (navsat_to_kml.py) können die GPS Daten aus den Rosbags geladen werden, womit dann der Videoaufzeichnung die entsprechende Reihe, der Ort und der Bereich zugeordnet werden kann.
+
+
 Die Videos sollten so zugeschnitten sein, dass sie kurz vor der Reihe anfangen und kurz vor der Reihe aufhören, damit die ausgeschnittenen Bilder den Reihen zuzuordnen sind.
 Die Videos könnten dann so heißen:
 - 2023-03-01_14-59-46_Horizontal 1.bagReihe9Rechts.avi
@@ -62,4 +64,4 @@ Mit dem Skript "insert_cut_images.py" können dann die ausgeschnittenen Bilder d
 
 - python3 insert_cut_images.py output/2023-04-26_17-49-24_Elstar_1_laenge_left.svo.avi/ False "Reihe 9" Right Berschauer A
 
-Dem Skript wird den Pfad zum Ordner übergeben, ob die Messfahrt von rechts nach links (False) oder von links nach rechts (True) aufgenommen wurde (siehe qgis), die entsprechende Reihe, ob die Reihe von Rechts (oben) oder Links (unten) aufgenommen wurde (siehe qgis) den Ort und entsprechenden Bereich.
+Dem Skript wird den Pfad zum Ordner übergeben, ob die Messfahrt von rechts nach links (False) oder von links nach rechts (True) aufgenommen wurde (siehe qgis), die entsprechende Reihe, ob die Reihe von rechts (oben) oder links (unten) aufgenommen wurde (siehe qgis) den Ort und entsprechenden Bereich.
