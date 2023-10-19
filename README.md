@@ -31,7 +31,7 @@ Zur Verwendung des Skriptes müssen einige Pakete installiert sein im Zusammenha
 - [ultralytics](https://github.com/ultralytics/ultralytics)
 - pip install argparse
 - pip install math
-- ip install os
+- pip install os
 - pip install cv2
 
 Für das Verwenden des navsat Skriptes sollte noch ROS installiert sein.
