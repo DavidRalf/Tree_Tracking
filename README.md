@@ -44,22 +44,27 @@ Falls noch nicht gemacht, sollte aus den Messfahrten Videos extrahiert werden. M
 Die Videos sollten so zugeschnitten werden, dass sie kurz vor Beginn einer Baumreihe starten und kurz nach dem Ende der Reihe aufhören. Dies gewährleistet, dass die ausgeschnittenen Bilder den Baumreihen zugeordnet werden können. Die Videos können im folgenden Format benannt werden:
 
 Beispiel: "2023-03-01_14-59-46_Horizontal_1_bagReihe9Rechts.avi"
+
 Wichtig sind dabei die Zeitangaben, die in diesem Format vorhanden sein sollten.
 
 Anschließend kann das Tracking-Skript mithilfe des folgenden Befehls aufgerufen werden:
 
 
-`python3 track_trees.py "Pfad zum Video" True/False`
+```bash
+python3 track_trees.py "Pfad zum Video" True/False
+```
 Das Skript erwartet den Pfad zum Video und eine Angabe (True oder False) darüber, ob ein Ergebnisvideo erstellt werden soll, um das Tracking nachträglich zu überprüfen.
 
 Die ausgeschnittenen Bilder werden im Output-Ordner gespeichert und mit dem Namen des Videos versehen.
 
 Falls noch nicht vorhanden, können mit dem Skript "make_folder.py" die Ordner für die jeweilige Baumreihe erstellt werden:
-
-`python3 make_folder.py 174 "Reihe 9" "Berschauer A"`
+```bash
+python3 make_folder.py 174 "Reihe 9" "Berschauer A"
+```
 Das Skript benötigt Angaben zur Anzahl der Bäume in dieser Reihe, den Namen der Reihe, den Standort und den Bereich.
 
 Mithilfe des Skripts "insert_cut_images.py" können die ausgeschnittenen Bilder dann in den entsprechenden Ordnern platziert werden:
-
-`python3 insert_cut_images.py output/2023-04-26_17-49-24_Elstar_1_laenge_left.svo.avi/ False "Reihe 9" "Right" "Berschauer A"`
+```bash
+python3 insert_cut_images.py output/2023-04-26_17-49-24_Elstar_1_laenge_left.svo.avi/ False "Reihe 9" "Right" "Berschauer A"
+```
 Das Skript erwartet den Pfad zum Ordner, Informationen zur Aufnahmerichtung (von rechts nach links: False oder von links nach rechts: True, wie in QGIS definiert), den Namen der Reihe, die Position der Baumreihe (oben oder unten) und den Standort bzw. Bereich.
