@@ -41,27 +41,27 @@ Für das Verwenden des navsat Skriptes sollte noch ROS installiert werden.
 Falls noch nicht gemacht, sollte aus den Messfahrten Videos extrahiert werden. Mithilfe des Skriptes von David Berschauer (navsat_to_kml.py) können die GPS Daten aus den Rosbags geladen werden, womit dann der Videoaufzeichnung die entsprechende Reihe, der Ort und der Bereich zugeordnet werden kann.
 
 
-Die Videos sollten so zugeschnitten sein, dass sie kurz vor der Reihe anfangen und kurz vor der Reihe aufhören, damit die ausgeschnittenen Bilder den Reihen zuzuordnen sind.
-Die Videos könnten dann so heißen:
-- 2023-03-01_14-59-46_Horizontal 1.bagReihe9Rechts.avi
+Die Videos sollten so zugeschnitten werden, dass sie kurz vor Beginn einer Baumreihe starten und kurz nach dem Ende der Reihe aufhören. Dies gewährleistet, dass die ausgeschnittenen Bilder den Baumreihen zugeordnet werden können. Die Videos können im folgenden Format benannt werden:
 
-Wichtig sind aber nur die Zeitangaben, die in diesem Format sein müssen und wie das Video dann mindestens heißen müsste.
+Beispiel: "2023-03-01_14-59-46_Horizontal_1_bagReihe9Rechts.avi"
+Wichtig sind dabei die Zeitangaben, die in diesem Format vorhanden sein sollten.
 
-Danach kann dann das Tracking Skript aufgerufen werden mit
-- python3 track_trees.py "Pfad zum Video" True/False
+Anschließend kann das Tracking-Skript mithilfe des folgenden Befehls aufgerufen werden:
 
-Dem Skript übergibt man dann den Pfad zum Video und ob ein Ergebnis Video gemacht werden soll, in dem man sich das Tracking im Nachhinein nochmal angucken kann.
+shell
+python3 track_trees.py "Pfad zum Video" True/False
+Das Skript erwartet den Pfad zum Video und eine Angabe (True oder False) darüber, ob ein Ergebnisvideo erstellt werden soll, um das Tracking nachträglich zu überprüfen.
 
-Die ausgeschnittenen Bilder sind dann im Output Ordner zu finden, mit dem Namen des Videos.
+Die ausgeschnittenen Bilder werden im Output-Ordner gespeichert und mit dem Namen des Videos versehen.
 
-Falls noch nicht gemacht, kann mit "make_folder.py" die Ordner erstellt werden für die jeweilige Reihe.
+Falls noch nicht vorhanden, können mit dem Skript "make_folder.py" die Ordner für die jeweilige Baumreihe erstellt werden:
 
-- python3 make_folder.py 174 "Reihe 9" Berschauer A
+shell
+python3 make_folder.py 174 "Reihe 9" "Berschauer A"
+Das Skript benötigt Angaben zur Anzahl der Bäume in dieser Reihe, den Namen der Reihe, den Standort und den Bereich.
 
-Dem Skript übergibt man dann, wie viele Bäume in dieser Reihe sind, die Reihe, den Ort und den Bereich.
+Mithilfe des Skripts "insert_cut_images.py" können die ausgeschnittenen Bilder dann in den entsprechenden Ordnern platziert werden:
 
-Mit dem Skript "insert_cut_images.py" können dann die ausgeschnittenen Bilder dort eingefügt werden.
-
-- python3 insert_cut_images.py output/2023-04-26_17-49-24_Elstar_1_laenge_left.svo.avi/ False "Reihe 9" Right Berschauer A
-
-Dem Skript wird den Pfad zum Ordner übergeben, ob die Messfahrt von rechts nach links (False) oder von links nach rechts (True) aufgenommen wurde (siehe qgis), die entsprechende Reihe, ob die Reihe von rechts (oben) oder links (unten) aufgenommen wurde (siehe qgis) den Ort und entsprechenden Bereich.
+shell
+python3 insert_cut_images.py output/2023-04-26_17-49-24_Elstar_1_laenge_left.svo.avi/ False "Reihe 9" "Right" "Berschauer A"
+Das Skript erwartet den Pfad zum Ordner, Informationen zur Aufnahmerichtung (von rechts nach links: False oder von links nach rechts: True, wie in QGIS definiert), den Namen der Reihe, die Position der Baumreihe (oben oder unten) und den Standort bzw. Bereich.
