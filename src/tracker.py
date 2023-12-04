@@ -673,6 +673,8 @@ class Tracker:
                                                                                                 variance_x)
             probability_longitude = norm.pdf(new_position[1], next_y, variance_y) / norm.pdf(next_y, next_y,
                                                                                                  variance_y)
+
+
             print(f"probability_latitude {probability_latitude}")
             print(f"probability_longitude {probability_longitude}")
                 # probability = gauss_distribution_x.pdf(new_position) / gauss_distribution_x.pdf((next_x,next_y))
