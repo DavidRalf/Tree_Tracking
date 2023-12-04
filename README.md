@@ -1,3 +1,5 @@
+TODO: eventuell beim tracking das löschen machen also wenn ein nuer baum getracket wird
+
 # SAMSON Tree Tracking
 
 Dieses Projekt entstand im Rahmen des Grundprojektes an der HAW. 
