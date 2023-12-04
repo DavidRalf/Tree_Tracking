@@ -147,7 +147,7 @@ class Tracker:
                 self.distance_arr.sort()
                 self.distance_arr.pop(-1)
             self.lastDistance = new_distance
-            self.nowDistance = True
+            self.nowDistance = False
 
     def estimate_motion(self, now_image_resized):
         """
@@ -424,8 +424,7 @@ class Tracker:
                     selected_tracker_id = tracker_id
 
         if smallest_distance != 9999999:
-            #if self.nowDistance:
-            if False:
+            if self.nowDistance:
                 distance = self.lastDistance
                 distance_out_of_frame = max(self.distance_arr)
             else:
@@ -435,11 +434,19 @@ class Tracker:
                 else:
                     distance_out_of_frame = max(self.distance_arr)
                     distance = min(self.distance_arr)
+            if distance>200:
+                distance=200
+            print(f"self.distance_arr {self.distance_arr}")
+            print(f"smallest_distance {smallest_distance}")
+            print(f"distance {distance}")
+            print(f"distance_out_of_frame {distance_out_of_frame}")
+            print(f"tracker_x1 {tracker_x1}")
+            print(f"tracker_x2 {tracker_x2}")
 
             if (
                     (direction[0][0] > 0 and tracker_x1 > 640 and (640 - tree_x2) <= 50) or
                     (direction[0][0] < 0 and tracker_x2 < 0 and (0 + tree_x1) <= 50)
-            ) and smallest_distance < self.all_time_biggest_distance:
+            ) and smallest_distance < distance_out_of_frame:
                 self.tracker[selected_tracker_id] = [
                     tree_x1, tree_y1, tree_x2, tree_y2, selected_tracker_id, 0, True
                 ]
@@ -617,7 +624,7 @@ class Tracker:
 
                 # Calculate average distance
                 # average_distance = total_distance / counter
-            average_distance = np.mean(distances, axis=0)
+            average_distance = np.mean(distances)
             print(f"total_distance {total_distance}")
             print(f"average_distance meter {average_distance}")
             print(f"average_distance degree {average_distance / 111000}")
@@ -648,9 +655,9 @@ class Tracker:
             variance_x = np.sqrt(np.var(distances)) / 111000
             variance_x = np.sqrt(variance_latitude)
             variance_y = np.sqrt(variance_longitude)
-            variance_x = 0.000002175975741982
+            variance_x = 0.000001575975741982
 
-            variance_y = 0.000002175975741982
+            variance_y = 0.000001575975741982
 
             print(f"self.tree_3d_positions[key][0 {self.tree_3d_positions[key][0]}")
             next_x = self.tree_3d_positions[key][0] + (average_distance)
