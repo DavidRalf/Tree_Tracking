@@ -109,7 +109,7 @@ class Tracker:
             self.is_first_frame = False
             self.prev_image_resized = now_image_resized
         else:
-            #results = self.check_results(results)
+            results = self.check_results(results)
             self.nowDistance = False
             self.calculate_pixel_distance(results)
             self.estimate_motion(now_image_resized)
@@ -374,8 +374,7 @@ class Tracker:
         smallest_distance = 9999999
         selected_tracker_id = self.id_generator
 
-        tree_x1, tree_y1, tree_x2, tree_y2, tree_confidence, tree_label = tree_box
-        tree_x1, tree_y1, tree_x2, tree_y2 =int(tree_x1), int(tree_y1), int(tree_x2), int(tree_y2)
+        tree_x1, tree_y1, tree_x2, tree_y2, _, _ = map(int, tree_box)
         direction = np.mean(self.direction_history, axis=0)
 
         for tracker_id, tracker_box in self.tracker.items():
@@ -424,8 +423,7 @@ class Tracker:
                     selected_tracker_id = tracker_id
 
         if smallest_distance != 9999999:
-            #if self.nowDistance:
-            if False:
+            if self.nowDistance:
                 distance = self.lastDistance
                 distance_out_of_frame = max(self.distance_arr)
             else:
@@ -447,25 +445,24 @@ class Tracker:
                     (direction[0][0] > 0 and tracker_x1 > 640) or
                     (direction[0][0] < 0 and tracker_x2 < 0)
             ) and smallest_distance > distance_out_of_frame:
-                self.check_results(tree_x1, tree_y1, tree_x2, tree_y2, tree_confidence)
-                #self.tracker[self.id_generator] = [
-                #    tree_x1, tree_y1, tree_x2, tree_y2, self.id_generator, 0, True
-                #]
+                self.id_generator += 1
+                self.tracker[self.id_generator] = [
+                    tree_x1, tree_y1, tree_x2, tree_y2, self.id_generator, 0, True
+                ]
             elif smallest_distance > distance or self.id_generator == 0:
-                self.check_results(tree_x1, tree_y1, tree_x2, tree_y2, tree_confidence)
-                #self.tracker[self.id_generator] = [
-                #    tree_x1, tree_y1, tree_x2, tree_y2, self.id_generator, 0, True
-                #]
+                self.id_generator += 1
+                self.tracker[self.id_generator] = [
+                    tree_x1, tree_y1, tree_x2, tree_y2, self.id_generator, 0, True
+                ]
             else:
                 self.tracker[selected_tracker_id] = [
                     tree_x1, tree_y1, tree_x2, tree_y2, selected_tracker_id, 0, True
                 ]
         else:
-
-            self.check_results(tree_x1, tree_y1, tree_x2, tree_y2, tree_confidence)
-            #self.tracker[self.id_generator] = [
-           #     tree_x1, tree_y1, tree_x2, tree_y2, self.id_generator, 0, True
-           # ]
+            self.id_generator += 1
+            self.tracker[self.id_generator] = [
+                tree_x1, tree_y1, tree_x2, tree_y2, self.id_generator, 0, True
+            ]
 
         del remaining_detections[tree_key]
         return remaining_detections
@@ -587,110 +584,171 @@ class Tracker:
         self.direction_of_travel = None
         self.camera_angle_to_direction = None
 
-    def check_results(self, tree_x1, tree_y1, tree_x2, tree_y2, tree_confidence):
+    def check_results(self, results):
         # Vorhersage des neues GPS punkts besser macen
-
         if len(self.tree_3d_positions) > 3:
+            filtered_results = []
+            check = [None]
+            if len(self.tree_3d_positions) == 4:
+                check = [None, -1, -2]
+            if len(self.tree_3d_positions) == 5:
+                check = [None, -1, -2, -3]
+            if len(self.tree_3d_positions) >= 6:
+                check = [None, -1, -2, -3, -4]
+            for index, box in enumerate(results):
+                finished = None
+                x1, y1, x2, y2, confidence, label = box
 
+                new_position = self.get_position(x1, y1, x2, y2)
+                probability_at_new_position = -1
 
-
-            new_position = self.get_position(tree_x1, tree_y1, tree_x2, tree_y2)
-
-            total_distance = 0
-            keys = list(self.tree_3d_positions.keys())
+                total_distance = 0
+                keys = list(self.tree_3d_positions.keys())
                 # Calculate total distance between consecutive positions
-            counter = 0
-            distances = []
-            for i in keys:
-                if i + 1 in self.tree_3d_positions:  # Check if the next position exists in the dictionary
-                    coord1 = self.tree_3d_positions[i]
-                    coord2 = self.tree_3d_positions[i + 1]
+                counter = 0
+                distances = []
+                for i in keys:
+                    if i + 1 in self.tree_3d_positions:  # Check if the next position exists in the dictionary
+                        coord1 = self.tree_3d_positions[i]
+                        coord2 = self.tree_3d_positions[i + 1]
                         # distance = (coord2 - coord1)
-                    geod = Geodesic.WGS84
-                    result = geod.Inverse(coord1[0], coord1[1], coord2[0], coord2[1])
-                    bearing = result['azi1']
-                    distance = result['s12']
-                    print(f"distance {distance}")
-                    distances.append(distance)
-                    total_distance += distance
-                    counter += 1
+                        geod = Geodesic.WGS84
+                        result = geod.Inverse(coord1[0], coord1[1], coord2[0], coord2[1])
+                        bearing = result['azi1']
+                        distance = result['s12']
+                        print(f"distance {distance}")
+                        distances.append(distance)
+                        total_distance += distance
+                        counter += 1
 
                 # Calculate average distance
                 # average_distance = total_distance / counter
-            average_distance = np.mean(distances, axis=0)
-            print(f"total_distance {total_distance}")
-            print(f"average_distance meter {average_distance}")
-            print(f"average_distance degree {average_distance / 111000}")
+                average_distance = np.mean(distances, axis=0)
+                print(f"total_distance {total_distance}")
+                print(f"average_distance meter {average_distance}")
+                print(f"average_distance degree {average_distance / 111000}")
 
-            key = list(self.tree_3d_positions.keys())[-1]
+                key = list(self.tree_3d_positions.keys())[-1]
 
                 # Calculate the geodesic distance between the points
 
-            variance_x = 0.000002175975741982
+                variance_x = 0.000001175975741982
 
                 # variance_x = np.sqrt(np.var(distances,axis=0))
-            print(f"variance {variance_x}")
-            print(f"variance {variance_x * 111000}")
-            print(f"variance_x2 {np.sqrt(variance_x) * 111000}")
-            print(f"np.var(distances) {np.var(distances)}")
-            print(f"np.var(distances) degree {np.var(distances) / 111000}")
-            print(f"np.var(distances) degree  sqrt{np.var(distances) / 111000}")
-            print(f"np.var sqrt(distances) {np.sqrt(np.var(distances)) / 111000}")
-            latitude_data = [self.tree_3d_positions[key][0] for key in self.tree_3d_positions]
-            longitude_data = [self.tree_3d_positions[key][1] for key in self.tree_3d_positions]
+                print(f"variance {variance_x}")
+                print(f"variance {variance_x * 111000}")
+                print(f"variance_x2 {np.sqrt(variance_x) * 111000}")
+                print(f"np.var(distances) {np.var(distances)}")
+                print(f"np.var(distances) degree {np.var(distances) / 111000}")
+                print(f"np.var(distances) degree  sqrt{np.var(distances) / 111000}")
+                print(f"np.var sqrt(distances) {np.sqrt(np.var(distances)) / 111000}")
+                latitude_data = [self.tree_3d_positions[key][0] for key in self.tree_3d_positions]
+                longitude_data = [self.tree_3d_positions[key][1] for key in self.tree_3d_positions]
                 # Calculate sample variances
-            variance_latitude = np.var(latitude_data)
-            variance_longitude = np.var(longitude_data)
-            print(f"variance_latitude {variance_latitude}")
-            print(f"variance_longitude {variance_longitude}")
-            print(f"variance_latitude {np.sqrt(variance_latitude)}")
-            print(f"variance_longitude {np.sqrt(variance_longitude)}")
-            variance_x = np.sqrt(np.var(distances)) / 111000
-            variance_x = np.sqrt(variance_latitude)
-            variance_y = np.sqrt(variance_longitude)
-            variance_x = 0.000002175975741982
+                variance_latitude = np.var(latitude_data)
+                variance_longitude = np.var(longitude_data)
+                print(f"variance_latitude {variance_latitude}")
+                print(f"variance_longitude {variance_longitude}")
+                print(f"variance_latitude {np.sqrt(variance_latitude)}")
+                print(f"variance_longitude {np.sqrt(variance_longitude)}")
+                variance_x = np.sqrt(np.var(distances)) / 111000
+                variance_x = np.sqrt(variance_latitude)
+                variance_y = np.sqrt(variance_longitude)
+                variance_x = 0.000001175975741982
 
-            variance_y = 0.000002175975741982
+                variance_y = 0.000001175975741982
 
-            print(f"self.tree_3d_positions[key][0 {self.tree_3d_positions[key][0]}")
-            next_x = self.tree_3d_positions[key][0] + (average_distance)
-            next_y = self.tree_3d_positions[key][1] + (average_distance)
-            print(f"next_x {next_x}")
-            print(f"next_y {next_y}")
+                print(f"self.tree_3d_positions[key][0 {self.tree_3d_positions[key][0]}")
+                next_x = self.tree_3d_positions[key][0] + (average_distance)
+                next_y = self.tree_3d_positions[key][1] + (average_distance)
+                print(f"next_x {next_x}")
+                print(f"next_y {next_y}")
 
                 # Calculate the destination point using the bearing and distance
-            direct_result = geod.Direct(self.tree_3d_positions[key][0], self.tree_3d_positions[key][1], bearing,
+                direct_result = geod.Direct(self.tree_3d_positions[key][0], self.tree_3d_positions[key][1], bearing,
                                             average_distance)
-            next_x = direct_result['lat2']
-            next_y = direct_result['lon2']
-            print(f"next_x {next_x}")
-            print(f"next_y {next_y}")
+                next_x = direct_result['lat2']
+                next_y = direct_result['lon2']
+                print(f"next_x {next_x}")
+                print(f"next_y {next_y}")
                 # Erstelle eine Gaussverteilung um die vorhergesagte Position des nächsten Baums
                 # gauss_distribution_x = norm(loc=(next_x,next_y), scale=variance_x)
 
                 # Calculate probability of 'YOLO' point within the normal distribution
-            probability_latitude = norm.pdf(new_position[0], next_x, variance_x) / norm.pdf(next_x, next_x,
+                probability_latitude = norm.pdf(new_position[0], next_x, variance_x) / norm.pdf(next_x, next_x,
                                                                                                 variance_x)
-            probability_longitude = norm.pdf(new_position[1], next_y, variance_y) / norm.pdf(next_y, next_y,
+                probability_longitude = norm.pdf(new_position[1], next_y, variance_y) / norm.pdf(next_y, next_y,
                                                                                                  variance_y)
-            print(f"probability_latitude {probability_latitude}")
-            print(f"probability_longitude {probability_longitude}")
+                print(f"probability_latitude {probability_latitude}")
+                print(f"probability_longitude {probability_longitude}")
                 # probability = gauss_distribution_x.pdf(new_position) / gauss_distribution_x.pdf((next_x,next_y))
 
-            probability = (probability_latitude + probability_longitude) / 2
-            print(f"probability {probability}")
-            print(f"tree_confidence {tree_confidence}")
-            if ((tree_confidence + probability) / 2) >= 0.5:
-                self.id_generator += 1
-                self.tracker[self.id_generator] = [
-                    tree_x1, tree_y1, tree_x2, tree_y2, self.id_generator, 0, True]
-        else:
-            self.id_generator += 1
-            self.tracker[self.id_generator] = [
-                tree_x1, tree_y1, tree_x2, tree_y2, self.id_generator, 0, True]
+                probability = (probability_latitude + probability_longitude) / 2
+                print(f"probability {probability}")
+                # probability_at_new_position_temp = np.mean(probability)
+                probability_at_new_position_temp = probability
+
+                if index + 1 < len(results):
+                    x1_compare, y1_compare, x2_compare, y2_compare, confidence_compare, label_compare = results[
+                        index + 1]
+                    new_position_compare = self.get_position(x1_compare, y1_compare, x2_compare, y2_compare)
+                    # probability_compare = gauss_distribution_x.pdf(new_position_compare) / gauss_distribution_x.pdf(
+                    #    (next_x,next_y))
+                    probability_latitude_compare = norm.pdf(new_position_compare[0], next_x, variance_x) / norm.pdf(
+                        next_x, next_x,
+                        variance_x)
+                    probability_longitude_compare = norm.pdf(new_position_compare[1], next_y, variance_y) / norm.pdf(
+                        next_y, next_y,
+                        variance_y)
+                    probability_compare = (probability_latitude_compare + probability_longitude_compare) / 2
+
+                    probability_compare = np.mean(probability_compare)
+                    if probability_at_new_position_temp > probability_compare and probability_at_new_position_temp > probability_at_new_position:
+                        probability_at_new_position = probability_at_new_position_temp
+                elif probability_at_new_position_temp > probability_at_new_position:
+                    probability_at_new_position = probability_at_new_position_temp
 
 
+                print(f"for check {check}")
+                for checking in check:
+                    print(f"checking {checking}")
+                    if checking is None:
+                        continue
+                    key = list(self.tree_3d_positions.keys())[checking]
+                    position = self.tree_3d_positions[key]
+                    print(f"key {key}")
+                    print(f"position {position}")
+                    print(f"position {position[0]}")
+                    # gauss_distribution_x = norm(loc=position, scale=variance_x)
 
+                    # probability = gauss_distribution_x.pdf(new_position) / gauss_distribution_x.pdf(position)
+
+                    probability_latitude = norm.pdf(new_position[0], position[0], variance_x) / norm.pdf(position[0],
+                                                                                                         position[0],
+                                                                                                         variance_x)
+                    probability_longitude = norm.pdf(new_position[1], position[1], variance_y) / norm.pdf(position[1],
+                                                                                                          position[1],
+                                                                                                          variance_y)
+                    print(f"probability_latitude {probability_latitude}")
+                    probability = (probability_latitude + probability_longitude) / 2
+                    print(f"probability {probability}")
+
+                    probability_at_new_position_temp = probability
+
+                    if probability_at_new_position_temp >= probability_at_new_position:
+                        probability_at_new_position = probability_at_new_position_temp
+                        finished = checking
+
+                if ((confidence + probability_at_new_position) / 2) >= 0.4:
+                    filtered_results.append(box)
+                    print(f"finished {finished}")
+                    print(f"check {check}")
+                    if finished in check:
+                        index_to_remove = check.index(finished)
+                        del check[index_to_remove:]  # Remove elements after 'finished'
+
+            results = filtered_results
+        return results
 
     def get_position(self, x1, y1, x2, y2):
         scaling_factor_width = self.original_now_image.shape[1] / 640
