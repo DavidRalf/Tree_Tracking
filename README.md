@@ -1,67 +1,85 @@
-TODO: eventuell beim tracking das löschen machen also wenn ein nuer baum getracket wird
-
 # SAMSON Tree Tracking
 
-Dieses Projekt entstand im Rahmen des Grundprojektes an der HAW. 
-Die Aufgabe bestand darin, aus einer aufeinanderfolgenden Reihe von Bildern ein Bild für jeden individuellen Baum auszuschneiden. Dies erforderte die Erkennung und Verfolgung des Baumes auf den Bildern.
+
+## Project Description
+This project was developed as part of the Grundprojekt at HAW (University of Applied Sciences). 
+The main task involved isolating an image for each individual tree from a consecutive series of images. This required the detection and tracking of trees across the images.
+### Extensions:
+- **GPS Integration**: Additional functionality was incorporated by integrating GPS data. This was done to minimize potential misidentifications and to calculate the GPS positions of the recognized trees.
+
 
 ## Table of Contents
 
-- [Bemerkung](#Bemerkung)
-- [Funktionsweise](#Funktionsweise)
-- [YOLOV8](#YOLOV8)
 - [Installation](#Installation)
-- [Verwendung](#Verwendung)
+- [Usage](#Usage)
 
-
-
-
-## Bemerkung
-
-Das trainierte YOLOv8-Modell erweist sich als unzureichend robust und präzise, um es weiterhin einzusetzen. 
-Bis zur Messfahrt am 7. Juli 2023 (Aufzeichnungsnr. 37, siehe Aufnahmen_Übersicht.xlsx) hat es funktioniert. Jedoch treten bei dieser und anderen Messfahrten im Sommer wiederholt Probleme auf: Es erfolgt entweder die falsche Identifikation von Bäumen oder es werden in aufeinanderfolgenden Bildern keine Bäume erkannt, obwohl sie deutlich sichtbar sind.
-Im Winter ist dies aber durchaus einsetzbar.
-
-## Funktionsweise
-Das Konzept basiert darauf, in jedem Frame YOLOv8 anzuwenden, um die Bäume zu erkennen. Zwischen zwei aufeinanderfolgenden Frames wird die Kamerabewegung auf Bildebene geschätzt, um die Position der bisher verfolgten Bäume im aktuellen Bild zu aktualisieren. Die neu erkannten Bäume werden dann anhand der IoU (Intersection over Union) oder der Distanz mit den bereits verfolgten Bäumen verglichen, um festzustellen, ob es sich um denselben Baum handelt. Auf diese Weise erfolgt das Tracking der Bäume.
-## YOLOV8
-Es wurde ein [YOLOv8](https://github.com/ultralytics/ultralytics)-Modell der Version small trainiert, mit Bilddaten aus allen Berschauer aufnahmen bis zur Nr 40 (siehe Aufnahmen_Übersicht.xlsx). Das Modell wurde speziell darauf trainiert, die Baumstämme zu erkennen. Das bedeutet, dass bei der Annotation die Bounding Box um den Baumstamm gelegt wurde.
 
 ## Installation
-Zur Verwendung des Skriptes müssen einige Pakete installiert sein im Zusammenhang mit Python (3.8):
-- [Pytorch](https://pytorch.org/get-started/locally/)
-- [ultralytics](https://github.com/ultralytics/ultralytics)
-- pip install argparse
-- pip install math
-- pip install os
-- pip install cv2
-
-Für das Verwenden des navsat Skriptes sollte noch ROS installiert sein.
 
 
-## Verwendung
-Falls noch nicht gemacht, sollte aus den Messfahrten Videos extrahiert werden. Mithilfe des Skriptes von David Berschauer (navsat_to_kml.py) können die GPS Daten aus den Rosbags geladen werden, womit dann der Videoaufzeichnung die entsprechende Reihe, der Ort und der Bereich zugeordnet werden kann.
-Die Videos sollten so zugeschnitten sein, dass sie kurz vor der Reihe anfangen und kurz vor der Reihe aufhören, damit die ausgeschnittenen Bilder den Reihen zuzuordnen sind.
-Die Videos könnten dann so heißen:
-- 2023-03-01_14-59-46_Horizontal 1.bagReihe9Rechts.avi
+To run this project, ensure you have Python installed as well as ROS. Then, install the necessary dependencies from the `requirements.txt` file. 
 
-Wichtig sind aber nur die Zeitangaben, die in diesem Format sein müssen und wie das Video dann mindestens heißen müsste.
+**Please note that the `requirements.txt` contains many packages that are not utilized in this project.**
 
-Danach kann dann das Tracking Skript aufgerufen werden mit
-- python3 track_trees.py "Pfad zum Video" True/False
+```bash
+# Clone the repository
+git clone https://github.com/yourusername/project.git
+cd project
 
-Dem Skript übergibt man dann den Pfad zum Video und ob ein Ergebnis Video gemacht werden soll, in dem man sich das Tracking im Nachhinein nochmal angucken kann.
+# Install dependencies
+pip install -r requirements.txt
+```
+## Usage
+### tracking.py
+The `tracking.py` script is designed to synchronize GPS and image data from ROS and ROS/SVO and perform tracking for a single row of trees.
 
-Die ausgeschnittenen Bilder sind dann im Output Ordner zu finden, mit dem Namen des Videos.
+To use this script, execute it using Python 3 with the following command:
 
-Falls noch nicht gemacht, kann mit "make_folder.py" die Ordner erstellt werden für die jeweilige Reihe.
+```bash
+python3 tracking.py "/media/david/T71/2023-07-07_11-26-33_Elstar_1_Laenge_1row.bag" "/media/david/T71/2023-07-07_11-26-08_elstar_1_laenge_left_1row.svo" Left 2225 15000 True "Reihe1"
+```
 
-- python3 make_folder.py 174 "Reihe 9" Berschauer A
+#### Arguments
+The script requires the following arguments, separated by spaces:
 
-Dem Skript übergibt man dann, wie viele Bäume in dieser Reihe sind, die Reihe, den Ort und den Bereich.
+- Rosbag: Path to the ROS bag containing GPS data.
+- SVO/Rosbag: Path to the SVO/Rosbag containing images.
+- Left/Right: Specify the camera (Left or Right).
+- start_frame: The starting frame number for the apple tree row.
+- end_frame: The ending frame number for the apple tree row.
+- True/False: Use GPS to reduce false detections (True/False).
+- row_name: Name for the apple tree row.
 
-Mit dem Skript "insert_cut_images.py" können dann die ausgeschnittenen Bilder dort eingefügt werden.
+#### Additional Information
+Please make sure to provide all arguments as described. The script performs tracking based on the given parameters for the specified tree row.
 
-- python3 insert_cut_images.py output/2023-04-26_17-49-24_Elstar_1_laenge_left.svo.avi/ False "Reihe 9" Right Berschauer A
+### Standalone
+The following Python script demonstrates how the developed tracker can be utilized as a standalone application:
+```python
+rosbag="2023-07-07_11-26-33_Elstar_1_Laenge_1row.bag"
+file_name="2023-07-07_11-26-33"
+model = YOLO("YOLOV8WinterSummer.pt")
+left_or_right_camera=True or False
+gps_check= True or False
+tree_tracker = Tracker(model, rosbag, file_name, intrinsic_matrix, left_or_right_camera, gps_check)
 
-Dem Skript wird den Pfad zum Ordner übergeben, ob die Messfahrt von rechts nach links (False) oder von links nach rechts (True) aufgenommen wurde (siehe qgis), die entsprechende Reihe, ob die Reihe von Rechts (oben) oder Links (unten) aufgenommen wurde (siehe qgis) den Ort und entsprechenden Bereich.
+for apple_tree_row in dataset:
+    row_line = LineString(row) or None # Linestring made from GPS points of the tree row
+    tree_tracker.set_row(row_name)
+    tree_tracker.set_row_line(row_line)
+        for image_and_gps in apple_tree_row:
+            gps=image_and_gps[1]
+            image=image_and_gps[0]
+            tree_tracker.update_gps(gps)
+            tree_tracker.update_image(image)
+    tree_tracker.finish()
+```
+
+#### Useful Methods
+- **`make_geojson()`** : generates a GeoJSON file containing the detected trees
+
+
+- **`get_gps()`** : retrieves a dictionary containing each tree's unique ID as a key and its corresponding GPS locations as values. This method aids in accessing the GPS data associated with detected trees.
+
+
+- **`show_results()`** : returns the current frame with bounding boxes drawn around detected trees. This functionality is helpful for visualizing the tracking results within the image frames.
