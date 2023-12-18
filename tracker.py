@@ -3,20 +3,15 @@ import os
 
 import cv2
 import numpy as np
-import pyproj
 from geographiclib.geodesic import Geodesic
-from pyproj import Geod, geod
-from scipy.stats import norm, multivariate_normal, vonmises
-from shapely import Point
-from sklearn.linear_model import LinearRegression
-from shapely.geometry import LineString
-from ultralytics import YOLO
-from geopy.distance import geodesic
+from scipy.stats import norm
+from shapely.geometry import Point
 from cv2 import NORM_HAMMING
+import geojson
 
 
 class Tracker:
-    def __init__(self, yolo, folder_name, file_name, matrix, side):
+    def __init__(self, yolo, folder_name, file_name, matrix, side, gps_check):
 
         if not os.path.exists('output'):
             os.makedirs('output')
@@ -24,6 +19,8 @@ class Tracker:
         if not os.path.exists(f'output/{folder_name}'):
             os.makedirs(f'output/{folder_name}')
 
+        self.row_line = None
+        self.gps_check = gps_check
         self.matrix = matrix
         self.folder_name = folder_name
         self.file_name = file_name
@@ -32,29 +29,59 @@ class Tracker:
         self.sift = cv2.ORB_create(500, edgeThreshold=0, nlevels=20)
         self.bf = cv2.BFMatcher(normType=NORM_HAMMING)
         self.yolo = yolo
-
+        self.testing_array = []
         self.side = side
         self.id_generator = 0
         self.border_life = 25
         self.trees = {}
         self.now_image_resized = None
         self.tracker = {}
-        self.tree_3d_positions = {}
+        self.tree_positions_for_predicting = {}
+        self.tree_gps_positions = {}
         self.translation_vector = None
         self.translation_history = []
 
         self.is_first_frame = True
         self.gps = None
-        self.direction_of_travel = None
+        self.camera_angle = None
+        self.direction_of_travel_for_predicting = None
         self.camera_angle_to_direction = None
         self.prev_image_resized = None
         self.original_now_image = None
         self.all_time_smallest_distance = 999999
         self.all_time_biggest_distance = -1
         self.distance_arr = []
-        self.nowDistance = None
         self.lastDistance = None
         self.direction_history = []
+        self.row = None
+
+    def set_row_line(self, row_line):
+        self.row_line=row_line
+    def set_row(self, row):
+        self.row = row
+        if not os.path.exists(f'output/{self.folder_name}/{row}'):
+            os.makedirs(f'output/{self.folder_name}/{row}')
+            os.makedirs(f'output/{self.folder_name}/{row}/images')
+
+    def make_geojson(self):
+        positions = self.get_gps()
+        print(positions)
+        coordinates = []
+        for i in positions:
+            coordinates.append(positions[i])
+
+        point_features = [geojson.Feature(geometry=geojson.Point((coord[1], coord[0])), properties={}) for coord in
+                          coordinates]
+
+        # Create a GeoJSON Feature Collection
+        feature_collection = geojson.FeatureCollection(point_features)
+
+        # Write the GeoJSON Feature Collection to a file
+        with open(f'output/{self.folder_name}/{self.row}/output.geojson', 'w') as f:
+            geojson.dump(feature_collection, f)
+
+    def get_gps(self):
+        return self.tree_gps_positions
 
     def set_folder_name(self, name):
         self.folder_name = name
@@ -68,25 +95,20 @@ class Tracker:
         if self.gps is None:
             self.gps = gps
         else:
-            # Berechnung der Differenz zwischen den GPS-Standorten
-            # differenz = np.array(self.gps) - np.array(gps)
-
-            # Berechnung der Fahrtrichtung in Grad
-            # self.direction_of_travel = np.degrees(np.arctan2(differenz[1], differenz[0]))
             geod = Geodesic.WGS84
             result = geod.Inverse(gps[0], gps[1], self.gps[0], self.gps[1])
             initial_bearing = result['azi1']
-            self.direction_of_travel = initial_bearing
-            print(f"self.direction_of_travel {self.direction_of_travel}")
+            self.direction_of_travel_for_predicting = initial_bearing % 360
 
-            # Der berechnete Winkel kann negative Werte haben, deshalb:
-            # if self.direction_of_travel < 0:
-            #    self.direction_of_travel += 360  # Umrechnung in den Bereich von 0 bis 360 Grad
+            result = geod.Inverse(self.gps[0], self.gps[1], gps[0], gps[1])
+            initial_bearing = result['azi1'] % 360
 
             if self.side == "Left":
-                self.camera_angle_to_direction = (self.direction_of_travel + 90) % 360
+                self.camera_angle_to_direction = (self.direction_of_travel_for_predicting + 90) % 360
+                self.camera_angle = (initial_bearing + 90) % 360
             else:
-                self.camera_angle_to_direction = (self.direction_of_travel - 90) % 360
+                self.camera_angle_to_direction = (self.direction_of_travel_for_predicting - 90) % 360
+                self.camera_angle = (initial_bearing - 90) % 360
             self.gps = gps
 
     def update_image(self, image):
@@ -94,13 +116,10 @@ class Tracker:
         now_image_resized = cv2.resize(image, (int(640), int(640)))
         self.now_image_resized = now_image_resized
         results = self.yolo.predict(now_image_resized, conf=0.50, iou=0.0)
-        print(results[0].boxes.data)
         results = list(results[0].boxes.data)
-        print(results)
         direction = np.mean(self.direction_history, axis=0)
 
         if self.direction_history and direction[0][0] < 0:
-            # Sort the list based on the first element of the tensor within the list
             results.sort(key=lambda x: x[0].item())
         else:
             results.sort(key=lambda x: x[0].item(), reverse=True)
@@ -109,17 +128,12 @@ class Tracker:
             self.is_first_frame = False
             self.prev_image_resized = now_image_resized
         else:
-            #results = self.check_results(results)
-            self.nowDistance = False
             self.calculate_pixel_distance(results)
             self.estimate_motion(now_image_resized)
             self.tracker_update_motion()
             self.update_tracker(results)
             self.update_trees()
-            print(f"self.tree_3d_positions {self.tree_3d_positions}")
             self.prev_image_resized = now_image_resized
-            for i in self.tree_3d_positions:
-                print(f"lat {self.tree_3d_positions[i][0]} lon {self.tree_3d_positions[i][1]} key {i}")
 
     def calculate_pixel_distance(self, results):
         if len(results) >= 2:
@@ -147,7 +161,6 @@ class Tracker:
                 self.distance_arr.sort()
                 self.distance_arr.pop(-1)
             self.lastDistance = new_distance
-            self.nowDistance = False
 
     def estimate_motion(self, now_image_resized):
         """
@@ -183,8 +196,8 @@ class Tracker:
                     translation_vector = [[abs(translation_vector[0][0]), abs(translation_vector[0][1])]]
                 else:
                     translation_vector = [[-abs(translation_vector[0][0]), -abs(translation_vector[0][1])]]
-            translation_vector[0][0] += (translation_vector[0][0] * 20 / 100)
             self.translation_history.append(translation_vector)
+            # translation_vector[0][0] += (translation_vector[0][0] * 20 / 100)
 
         if len(self.translation_history) > self.history_size:
             self.translation_history = self.translation_history[-self.history_size:]
@@ -192,19 +205,21 @@ class Tracker:
         if len(self.direction_history) > self.direction_size:
             self.direction_history = self.direction_history[-self.direction_size:]
         if not np.isnan(mean).any():
+            print(f"translation_vector {translation_vector}")
             difference = max(abs(translation_vector[0][0]), abs(mean[0][0])) - min(
                 abs(translation_vector[0][0]), abs(mean[0][0]))
-
+            print(f"mean {mean}")
+            print(f"difference {difference}")
             if abs(translation_vector[0][0]) < 3 and difference < 10:
                 self.translation_vector = [[0, 0]]
-                pass
-
+                return
             if abs(translation_vector[0][0]) < abs(mean[0][0]):
                 self.translation_vector = mean
-                pass
-            else:
-                if 0 < abs(translation_vector[0][0]) < 100 and (100 - abs(translation_vector[0][0])) < 40:
-                    translation_vector[0][0] += (translation_vector[0][0] * 75 / 100)
+                return
+            # else:
+            #    if 0 < abs(translation_vector[0][0]) < 100 and (100 - abs(translation_vector[0][0])) < 40:
+            #        translation_vector[0][0] += (translation_vector[0][0] * 25 / 100)
+
         self.translation_vector = translation_vector
 
     def tracker_update_motion(self):
@@ -226,6 +241,7 @@ class Tracker:
         x1, y1, x2, y2, id, lifecounter, wasDetected = detected_tree
         detected_tree[0] = int(x1 + translation[0][0])
         detected_tree[2] = int(x2 + translation[0][0])
+        print(f"translation {translation}")
         if not wasDetected:
             detected_tree[5] += 1
         detected_tree[6] = False
@@ -272,8 +288,7 @@ class Tracker:
         ystop = int(ystop * scaling_factor_height)
 
         crop = currentFrame[ystart:ystop, xstart:xstop]
-        print(f"{output_dir}/{self.folder_name}/{self.file_name}-Tree{key}.png")
-        output_filename = f"{output_dir}/{self.folder_name}/{self.file_name}-Tree{key}.png"
+        output_filename = f"{output_dir}/{self.folder_name}/{self.row}/images/{self.file_name}-Tree{key}.png"
         cv2.imwrite(output_filename, crop)
         del self.trees[key]
 
@@ -375,7 +390,7 @@ class Tracker:
         selected_tracker_id = self.id_generator
 
         tree_x1, tree_y1, tree_x2, tree_y2, tree_confidence, tree_label = tree_box
-        tree_x1, tree_y1, tree_x2, tree_y2 =int(tree_x1), int(tree_y1), int(tree_x2), int(tree_y2)
+        tree_x1, tree_y1, tree_x2, tree_y2 = int(tree_x1), int(tree_y1), int(tree_x2), int(tree_y2)
         direction = np.mean(self.direction_history, axis=0)
 
         for tracker_id, tracker_box in self.tracker.items():
@@ -389,9 +404,9 @@ class Tracker:
             new_distance = abs(center_tree - center_tracker_tree)
 
             if (
-                    (new_distance <= 0 and smallest_distance <= 0 and new_distance > smallest_distance) or
-                    (new_distance >= 0 and smallest_distance >= 0 and new_distance < smallest_distance) or
-                    (new_distance <= 0 and smallest_distance >= 0 and new_distance < smallest_distance)
+                    (0 >= new_distance > smallest_distance and smallest_distance <= 0) or
+                    (0 <= new_distance < smallest_distance and smallest_distance >= 0) or
+                    (new_distance <= 0 <= smallest_distance and new_distance < smallest_distance)
             ):
                 if tracker_x1 < 0 and (640 - tree_x2) < 50:
                     continue
@@ -424,24 +439,16 @@ class Tracker:
                     selected_tracker_id = tracker_id
 
         if smallest_distance != 9999999:
-            if self.nowDistance:
-                distance = self.lastDistance
-                distance_out_of_frame = max(self.distance_arr)
+
+            if not self.distance_arr:
+                distance = 200
+                distance_out_of_frame = 200
             else:
-                if not self.distance_arr:
-                    distance = 200
-                    distance_out_of_frame = 200
-                else:
-                    distance_out_of_frame = max(self.distance_arr)
-                    distance = min(self.distance_arr)
-            if distance>200:
-                distance=200
-            print(f"self.distance_arr {self.distance_arr}")
-            print(f"smallest_distance {smallest_distance}")
-            print(f"distance {distance}")
-            print(f"distance_out_of_frame {distance_out_of_frame}")
-            print(f"tracker_x1 {tracker_x1}")
-            print(f"tracker_x2 {tracker_x2}")
+                distance_out_of_frame = max(self.distance_arr)
+                distance = min(self.distance_arr)
+            if distance > 200:
+                distance = 200
+                distance_out_of_frame = 200
 
             if (
                     (direction[0][0] > 0 and tracker_x1 > 640 and (640 - tree_x2) <= 50) or
@@ -455,14 +462,10 @@ class Tracker:
                     (direction[0][0] < 0 and tracker_x2 < 0)
             ) and smallest_distance > distance_out_of_frame:
                 self.check_results(tree_x1, tree_y1, tree_x2, tree_y2, tree_confidence)
-                #self.tracker[self.id_generator] = [
-                #    tree_x1, tree_y1, tree_x2, tree_y2, self.id_generator, 0, True
-                #]
+
             elif smallest_distance > distance or self.id_generator == 0:
                 self.check_results(tree_x1, tree_y1, tree_x2, tree_y2, tree_confidence)
-                #self.tracker[self.id_generator] = [
-                #    tree_x1, tree_y1, tree_x2, tree_y2, self.id_generator, 0, True
-                #]
+
             else:
                 self.tracker[selected_tracker_id] = [
                     tree_x1, tree_y1, tree_x2, tree_y2, selected_tracker_id, 0, True
@@ -470,9 +473,6 @@ class Tracker:
         else:
 
             self.check_results(tree_x1, tree_y1, tree_x2, tree_y2, tree_confidence)
-            #self.tracker[self.id_generator] = [
-           #     tree_x1, tree_y1, tree_x2, tree_y2, self.id_generator, 0, True
-           # ]
 
         del remaining_detections[tree_key]
         return remaining_detections
@@ -517,7 +517,6 @@ class Tracker:
                 continue
             print(f"key key {key}")
             x1, y1, x2, y2 = self.tracker[key][:4]
-            # self.tree_3d_positions[key] = self.get_position(x1, y1, x2, y2)
             mid = (x2 + x1) / 2
             if key in self.trees:
                 x1T, y1T, x2T, y2T, midT, currentFrame, oldTracker = self.trees[key]
@@ -527,16 +526,16 @@ class Tracker:
                 if distanceNeu < distanceAlt:
                     copy = self.tracker.copy()
                     del copy[key]
-                    self.tree_3d_positions[key] = self.get_position(x1, y1, x2, y2)
 
+                    self.tree_positions_for_predicting[key] = self.get_position_for_predicting(x1, y1, x2, y2)
+                    self.tree_gps_positions[key] = self.get_position(x1, y1, x2, y2)
                     self.trees[key] = [x1, y1, x2, y2, mid, self.original_now_image, copy]
                     continue
             else:
                 copy = self.tracker.copy()
                 del copy[key]
-
-                self.tree_3d_positions[key] = self.get_position(x1, y1, x2, y2)
-
+                self.tree_positions_for_predicting[key] = self.get_position_for_predicting(x1, y1, x2, y2)
+                self.tree_gps_positions[key] = self.get_position(x1, y1, x2, y2)
                 self.trees[key] = [x1, y1, x2, y2, mid, self.original_now_image, copy]
 
     def show_results(self, image_size=(640, 640), font_scale=0.002, thickness_scale=0.002):
@@ -571,6 +570,7 @@ class Tracker:
     def finish(self):
         for key in self.tracker:
             self.cut_out_tree(key)
+        self.reset()
 
     def reset(self):
         self.id_generator = 0
@@ -582,114 +582,65 @@ class Tracker:
         self.translation_history = []
         self.is_first_frame = True
         self.gps = None
+        self.camera_angle = None
         self.prev_image_resized = None
         self.original_now_image = None
         self.all_time_smallest_distance = 999999
         self.all_time_biggest_distance = -1
         self.distance_arr = []
-        self.nowDistance = None
         self.lastDistance = None
         self.direction_history = []
-        self.tree_3d_positions = {}
-        self.direction_of_travel = None
+        self.tree_gps_positions = {}
+        self.tree_positions_for_predicting = {}
+        self.direction_of_travel_for_predicting = None
         self.camera_angle_to_direction = None
 
     def check_results(self, tree_x1, tree_y1, tree_x2, tree_y2, tree_confidence):
-        # Vorhersage des neues GPS punkts besser macen
+        if self.gps_check:
+            if len(self.tree_positions_for_predicting) > 3:
 
-        if len(self.tree_3d_positions) > 3:
+                new_position = self.get_position_for_predicting(tree_x1, tree_y1, tree_x2, tree_y2)
 
+                keys = list(self.tree_positions_for_predicting.keys())
 
+                distances = []
+                for i in keys:
+                    if i + 1 in self.tree_positions_for_predicting:
+                        coord1 = self.tree_positions_for_predicting[i]
+                        coord2 = self.tree_positions_for_predicting[i + 1]
+                        geod = Geodesic.WGS84
+                        result = geod.Inverse(coord1[0], coord1[1], coord2[0], coord2[1])
+                        bearing = result['azi1']
+                        distance = result['s12']
+                        print(f"distance {distance}")
+                        distances.append(distance)
 
-            new_position = self.get_position(tree_x1, tree_y1, tree_x2, tree_y2)
+                average_distance = np.mean(distances)
 
-            total_distance = 0
-            keys = list(self.tree_3d_positions.keys())
-                # Calculate total distance between consecutive positions
-            counter = 0
-            distances = []
-            for i in keys:
-                if i + 1 in self.tree_3d_positions:  # Check if the next position exists in the dictionary
-                    coord1 = self.tree_3d_positions[i]
-                    coord2 = self.tree_3d_positions[i + 1]
-                        # distance = (coord2 - coord1)
-                    geod = Geodesic.WGS84
-                    result = geod.Inverse(coord1[0], coord1[1], coord2[0], coord2[1])
-                    bearing = result['azi1']
-                    distance = result['s12']
-                    print(f"distance {distance}")
-                    distances.append(distance)
-                    total_distance += distance
-                    counter += 1
+                key = list(self.tree_positions_for_predicting.keys())[-1]
 
-                # Calculate average distance
-                # average_distance = total_distance / counter
-            average_distance = np.mean(distances)
-            print(f"total_distance {total_distance}")
-            print(f"average_distance meter {average_distance}")
-            print(f"average_distance degree {average_distance / 111000}")
+                variance_x = 0.000001575975741982
 
-            key = list(self.tree_3d_positions.keys())[-1]
-
-                # Calculate the geodesic distance between the points
-
-            variance_x = 0.000002175975741982
-
-                # variance_x = np.sqrt(np.var(distances,axis=0))
-            print(f"variance {variance_x}")
-            print(f"variance {variance_x * 111000}")
-            print(f"variance_x2 {np.sqrt(variance_x) * 111000}")
-            print(f"np.var(distances) {np.var(distances)}")
-            print(f"np.var(distances) degree {np.var(distances) / 111000}")
-            print(f"np.var(distances) degree  sqrt{np.var(distances) / 111000}")
-            print(f"np.var sqrt(distances) {np.sqrt(np.var(distances)) / 111000}")
-            latitude_data = [self.tree_3d_positions[key][0] for key in self.tree_3d_positions]
-            longitude_data = [self.tree_3d_positions[key][1] for key in self.tree_3d_positions]
-                # Calculate sample variances
-            variance_latitude = np.var(latitude_data)
-            variance_longitude = np.var(longitude_data)
-            print(f"variance_latitude {variance_latitude}")
-            print(f"variance_longitude {variance_longitude}")
-            print(f"variance_latitude {np.sqrt(variance_latitude)}")
-            print(f"variance_longitude {np.sqrt(variance_longitude)}")
-            variance_x = np.sqrt(np.var(distances)) / 111000
-            variance_x = np.sqrt(variance_latitude)
-            variance_y = np.sqrt(variance_longitude)
-            variance_x = 0.000001575975741982
-
-            variance_y = 0.000001575975741982
-
-            print(f"self.tree_3d_positions[key][0 {self.tree_3d_positions[key][0]}")
-            next_x = self.tree_3d_positions[key][0] + (average_distance)
-            next_y = self.tree_3d_positions[key][1] + (average_distance)
-            print(f"next_x {next_x}")
-            print(f"next_y {next_y}")
+                variance_y = 0.000001575975741982
 
                 # Calculate the destination point using the bearing and distance
-            direct_result = geod.Direct(self.tree_3d_positions[key][0], self.tree_3d_positions[key][1], bearing,
+                direct_result = geod.Direct(self.tree_positions_for_predicting[key][0],
+                                            self.tree_positions_for_predicting[key][1], bearing,
                                             average_distance)
-            next_x = direct_result['lat2']
-            next_y = direct_result['lon2']
-            print(f"next_x {next_x}")
-            print(f"next_y {next_y}")
-                # Erstelle eine Gaussverteilung um die vorhergesagte Position des nächsten Baums
-                # gauss_distribution_x = norm(loc=(next_x,next_y), scale=variance_x)
+                next_x = direct_result['lat2']
+                next_y = direct_result['lon2']
 
-                # Calculate probability of 'YOLO' point within the normal distribution
-            probability_latitude = norm.pdf(new_position[0], next_x, variance_x) / norm.pdf(next_x, next_x,
+                probability_latitude = norm.pdf(new_position[0], next_x, variance_x) / norm.pdf(next_x, next_x,
                                                                                                 variance_x)
-            probability_longitude = norm.pdf(new_position[1], next_y, variance_y) / norm.pdf(next_y, next_y,
+                probability_longitude = norm.pdf(new_position[1], next_y, variance_y) / norm.pdf(next_y, next_y,
                                                                                                  variance_y)
 
-
-            print(f"probability_latitude {probability_latitude}")
-            print(f"probability_longitude {probability_longitude}")
-                # probability = gauss_distribution_x.pdf(new_position) / gauss_distribution_x.pdf((next_x,next_y))
-
-            probability = (probability_latitude + probability_longitude) / 2
-            print(f"probability {probability}")
-            print(f"tree_confidence {tree_confidence}")
-            if ((tree_confidence + probability) / 2) >= 0.5:
+                probability = (probability_latitude + probability_longitude) / 2
+                if ((tree_confidence + probability) / 2) >= 0.5:
+                    self.id_generator += 1
+                    self.tracker[self.id_generator] = [
+                        tree_x1, tree_y1, tree_x2, tree_y2, self.id_generator, 0, True]
+            else:
                 self.id_generator += 1
                 self.tracker[self.id_generator] = [
                     tree_x1, tree_y1, tree_x2, tree_y2, self.id_generator, 0, True]
@@ -698,8 +649,42 @@ class Tracker:
             self.tracker[self.id_generator] = [
                 tree_x1, tree_y1, tree_x2, tree_y2, self.id_generator, 0, True]
 
+    def get_position_for_predicting(self, x1, y1, x2, y2):
+        scaling_factor_width = self.original_now_image.shape[1] / 640
+        scaling_factor_height = self.original_now_image.shape[0] / 640
+        x1 = int(x1 * scaling_factor_width)
+        y1 = int(y1 * scaling_factor_height)
+        x2 = int(x2 * scaling_factor_width)
+        y2 = int(y2 * scaling_factor_height)
+        center_x = round((x2 + x1) / 2)
+        center_y = round((y2 + y1) / 2)
 
+        depth = 1
+        p = np.array([center_x, center_y, 1])
+        K_inv = np.linalg.inv(self.matrix)
+        c = depth * np.dot(K_inv, p)
 
+        rotation_angle_to_north = (0 - self.camera_angle_to_direction)
+
+        rotation_angle_to_north = np.radians(rotation_angle_to_north)
+
+        rotation_matrix_to_north = np.array([
+            [np.cos(rotation_angle_to_north), -np.sin(rotation_angle_to_north)],
+            [np.sin(rotation_angle_to_north), np.cos(rotation_angle_to_north)]
+        ])
+
+        tree_position_camera_2d = [
+            c[0],
+            c[2]
+        ]
+
+        tree_position_camera_to_north = np.dot(rotation_matrix_to_north, tree_position_camera_2d)
+
+        tree_position_camera_to_north_degree = tree_position_camera_to_north / 111000
+
+        tree_position_global = self.gps + tree_position_camera_to_north_degree
+
+        return tree_position_global
 
     def get_position(self, x1, y1, x2, y2):
         scaling_factor_width = self.original_now_image.shape[1] / 640
@@ -710,51 +695,33 @@ class Tracker:
         y2 = int(y2 * scaling_factor_height)
         center_x = round((x2 + x1) / 2)
         center_y = round((y2 + y1) / 2)
-
-        print(f"center_x {center_x}")
-        print(f"center_y {center_y}")
+        if self.row_line is None:
+            depth = 1
+        else:
+            current_point = Point(self.gps[1], self.gps[0])
+            distance_to_line = current_point.distance(self.row_line)
+            depth = distance_to_line * 111000
 
         p = np.array([center_x, center_y, 1])
         K_inv = np.linalg.inv(self.matrix)
-        c = 1 * np.dot(K_inv, p)
-        print(f"c {c}")
-        # Bestimmung der Rotationswinkel, um die Kamera nach Norden auszurichten
-        print(f"rotation_angle_to_north vorher {self.camera_angle_to_direction}")
-        rotation_angle_to_north = (0 - self.camera_angle_to_direction)
-        print(f"rotation_angle_to_north nacher {rotation_angle_to_north}")
+        c = depth * np.dot(K_inv, p)
+        rotation_angle_to_north = (0 - self.camera_angle)
 
-        # Konvertierung des Rotationswinkels in Radiant für die Rotation
         rotation_angle_to_north = np.radians(rotation_angle_to_north)
-        print(f"rotation_angle_to_north radian {rotation_angle_to_north}")
 
-        # Aufbau der Rotationsmatrix für die zusätzliche Rotation, um die Kamera nach Norden auszurichten
-        rotation_matrix_to_north = np.array(
-            [[np.cos(rotation_angle_to_north), -np.sin(rotation_angle_to_north)],
-             [np.sin(rotation_angle_to_north), np.cos(rotation_angle_to_north)]])
-        print(f"rotation_matrix_to_north  {rotation_matrix_to_north}")
-        # Baumposition relativ zur Kamera (nur x und y) für die Rotation
+        rotation_matrix_to_north = np.array([
+            [np.cos(rotation_angle_to_north), -np.sin(rotation_angle_to_north)],
+            [np.sin(rotation_angle_to_north), np.cos(rotation_angle_to_north)]
+        ])
 
         tree_position_camera_2d = [
             c[0],
             c[2]
         ]
 
-        # Umrechnung der Baumposition relativ zur Kamera von Metern in Grad
-
-        # Transformation der Baumposition relativ zur Kamera in die Ausrichtung nach Norden
-
         tree_position_camera_to_north = np.dot(rotation_matrix_to_north, tree_position_camera_2d)
-        print(f"tree_position_camera_to_north  {tree_position_camera_to_north}")
-
         tree_position_camera_to_north_degree = tree_position_camera_to_north / 111000
-        print(f"tree_position_camera_to_north_degree  {tree_position_camera_to_north_degree}")
 
-        # Hinzufügen der umgerechneten relativen Baumposition in Grad zur aktuellen GPS-Position
-
-        print(f"self.gps {self.gps}")
         tree_position_global = self.gps + tree_position_camera_to_north_degree
-
-        print(f"tree_position_global_longitude {tree_position_global[1]}")
-        print(f"tree_position_global_latitude {tree_position_global[0]}")
 
         return tree_position_global
